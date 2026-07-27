@@ -33,7 +33,8 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          # 🎯 Alinhado com o padrão de nomenclatura acordado para a base de dados
-          tags: rodrigomicrosiga/postgres-protheus-dev:16
+          # 🎯 Nome sem o sufixo "-protheus-": a imagem nao tem dependencia exclusiva do Protheus
+          # (ex.: tambem pode ser usada com o TOTVS Smartview). Antigo: postgres-protheus-dev.
+          tags: rodrigomicrosiga/postgres-dev:16
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
