@@ -41,6 +41,14 @@ POSTGRES_ROOT_PASSWORD=root_postgres_secure_password
 POSTGRES_PORT=5432
 ```
 
+### 🏷️ Rastreabilidade de Build
+
+A tag da imagem publicada permanece fixa (`16`) entre builds — o versionamento aqui segue a major version do Postgres, não o commit. Para rastrear qual commit gerou um build específico sem depender da tag, o `pipeline` grava o label `org.opencontainers.image.revision` com o SHA do commit em toda imagem publicada:
+
+```bash
+docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' rodrigomicrosiga/postgres-protheus-dev:16
+```
+
 ### 🚀 Como Executar Localmente (Apenas para Testes)
 
 ```bash

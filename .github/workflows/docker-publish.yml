@@ -2,7 +2,8 @@ name: Docker Build & Push to Docker Hub
 
 on:
   push:
-    branches: 
+    branches:
+      - main
       - develop
     paths-ignore:
       - 'README.md'
@@ -34,3 +35,5 @@ jobs:
           push: true
           # 🎯 Alinhado com o padrão de nomenclatura acordado para a base de dados
           tags: rodrigomicrosiga/postgres-protheus-dev:16
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
