@@ -14,3 +14,8 @@ COPY init-protheus.sh /docker-entrypoint-initdb.d/init-protheus.sh
 
 # Força a permissão de execução do script
 RUN chmod +x /docker-entrypoint-initdb.d/init-protheus.sh
+
+# pg_isready já vem na imagem oficial -- checa se o Postgres está de fato
+# aceitando conexões, não só se a porta está aberta.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" || exit 1
