@@ -1,24 +1,51 @@
-name: Docker Build & Push to Docker Hub
+name: Build Postgres image
 
+# Publicacao MANUAL (workflow_dispatch). Antes, qualquer push em main/develop reconstruia e sobrescrevia a tag fixa
+# rastreada pelo Image Updater (trocava a producao sozinho). Agora: push=false por padrao (so constroi local);
+# push=true recusa tag ja existente no Hub (tag imutavel; versao nova = tag nova). A tag e o IMAGE_TAG abaixo (mudar de versao = editar este arquivo).
 on:
-  push:
-    branches:
-      - main
-      - develop
-    paths-ignore:
-      - 'README.md'
-      - '.gitignore'
+  workflow_dispatch:
+    inputs:
+      push:            { description: 'Publicar no Docker Hub', required: false, type: boolean, default: false }
+      allow_overwrite: { description: 'Permite publicar sobre tag EXISTENTE (so para corrigir imagem defeituosa); registra o digest anterior', required: false, type: boolean, default: false }
+
+permissions:
+  contents: read
 
 jobs:
-  build-and-push:
-    name: Build and Push Image on Local Infrastructure V2
-    runs-on: self-hosted  # 🚀 O Runner Global da Organização vai assumir aqui!
-
+  build:
+    name: Build (e push opcional)
+    runs-on: self-hosted
+    env:
+      HUB_NAME: postgres-dev
+      IMAGE_TAG: "16"
+      PUSH: ${{ inputs.push }}
+      OVERWRITE: ${{ inputs.allow_overwrite }}
     steps:
-      - name: Checkout do Código
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Recusa tag ja existente no Hub (so quando push=true)
+        if: ${{ inputs.push }}
+        env:
+          TAG: ${{ env.IMAGE_TAG }}
+        run: |
+          set -euo pipefail
+          acc='application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json'
+          tok="$(curl -fsS "https://auth.docker.io/token?service=registry.docker.io&scope=repository:rodrigomicrosiga/${HUB_NAME}:pull" | python3 -I -c 'import sys,json;print(json.load(sys.stdin)["token"])')"
+          code="$(curl -s -o /dev/null -w '%{http_code}' -I -H "Authorization: Bearer ${tok}" -H "Accept: ${acc}" "https://registry-1.docker.io/v2/rodrigomicrosiga/${HUB_NAME}/manifests/${TAG}")"
+          case "$code" in
+            404) echo "tag ${TAG} livre no Hub" ;;
+            200) if [ "$OVERWRITE" = "true" ]; then
+                   old="$(curl -sI -H "Authorization: Bearer ${tok}" -H "Accept: ${acc}" "https://registry-1.docker.io/v2/rodrigomicrosiga/${HUB_NAME}/manifests/${TAG}" | tr -d '\r' | grep -i '^docker-content-digest' | awk '{print $2}')"
+                   echo "ATENCAO: allow_overwrite=true; ${HUB_NAME}:${TAG} sera sobrescrita. Digest ANTERIOR: ${old}"
+                 else
+                   echo "ERRO: rodrigomicrosiga/${HUB_NAME}:${TAG} JA EXISTE no Hub; tags nao se sobrescrevem" >&2; exit 1
+                 fi ;;
+            *)   echo "ERRO: HEAD no Hub devolveu ${code}; nao arrisco publicar" >&2; exit 1 ;;
+          esac
 
       - name: Log in to Docker Hub
+        if: ${{ inputs.push }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -27,14 +54,13 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and Push Docker Image
+      - name: Build (push somente com push=true)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          push: true
-          # 🎯 Nome sem o sufixo "-protheus-": a imagem nao tem dependencia exclusiva do Protheus
-          # (ex.: tambem pode ser usada com o TOTVS Smartview). Antigo: postgres-protheus-dev.
-          tags: rodrigomicrosiga/postgres-dev:16
+          push: ${{ inputs.push }}
+          load: ${{ !inputs.push }}
+          tags: ${{ inputs.push && 'rodrigomicrosiga/postgres-dev' || 'ci-local/postgres-dev' }}:${{ env.IMAGE_TAG }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
